@@ -192,26 +192,9 @@ class GUIDEModel(torch.nn.Module):
 
         if input[0].shape[1] == 1:
             return
-        
-        # print(module.layer_idx)
-        
-
-        # specific_token_ids = self.tokenizer(
-        #     self.instruction,
-        #     return_tensors="pt"
-        # )['input_ids']
-
-        # mask = torch.isin(self.tokens, specific_token_ids)
-
-        # instruction_size = specific_token_ids[1:].size(1)
-        # token_index_in_text = torch.nonzero(mask.squeeze())\
-        #     [2:instruction_size]\
-        #     .squeeze()
 
         hidden_states = input[0]
         bsz, q_len, _ = hidden_states.size()
-        # qkT, value_states = helper\
-        #     .get_attention_before_softmax(module, input, output)
         attention_mask = deepcopy(input[1])
         position_ids = input[2]
 
@@ -228,16 +211,9 @@ class GUIDEModel(torch.nn.Module):
         cos, sin = module.rotary_emb(value_states, position_ids)
         query_states, key_states = self.apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
-        # if past_key_value is not None:
-        #     # sin and cos are specific to RoPE models; cache_position needed for the static cache
-        #     cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-        #     key_states, value_states = past_key_value.update(key_states, value_states, module.layer_idx, cache_kwargs)
-
         key_states = self.repeat_kv(key_states, module.num_key_value_groups)
         value_states = self.repeat_kv(value_states, module.num_key_value_groups)
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(module.head_dim)
-
-        
 
         # if attention_mask is not None:  # no matter the length, we just slice it
         causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]

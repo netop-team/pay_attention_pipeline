@@ -19,10 +19,9 @@ def is_torch_available():
         raise (e)
     
 PIPELINE_REGISTRY.register_pipeline(
-    "new-task",
+    "pay-attention",
     pipeline_class=PayAttentionPipeline,
     pt_model=AutoModelForCausalLM,
     default={"pt": ("mistralai/Mistral-7B-Instruct-v0.1", "1b62ab7")},
     type="text",  # current support type: text, audio, image, multimodal
 )
-

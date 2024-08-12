@@ -16,18 +16,29 @@ class AttentionLevels(Enum):
 class PayAttentionPipeline(TextGenerationPipeline):
     def __init__(
         self, 
-        delta_mid : float = 1.,
         metric : str = "influence",
         num_layers : int = 32,
         *args, 
         **kwargs,
-    ):
+    ):  
+        if 'delta_mid' in kwargs:
+            delta_mid = kwargs['delta_mid']
+            kwargs.pop('delta_mid')
+        else:
+            delta_mid = 1.
+        
         self.num_layers = num_layers
         metric_options = ["influence", "attention_rollout"]
         assert metric in metric_options, f"metric must be one of {metric_options}"
         
         # ADD DOCSTRING
         super().__init__(*args, **kwargs)
+
+        if "mistral" in str(type(self.model)).lower():
+            self.instruction_tokens = ['[INST]', '[/INST]']
+
+        elif "llama" in str(type(self.model)).lower():
+            self.instruction_tokens = -1 # TO COMPLETE
 
         self.guide_model = GUIDEModel(
             self.model,
@@ -118,46 +129,55 @@ class PayAttentionPipeline(TextGenerationPipeline):
     ):
         instruction = None
         delta = 0
+        
+        if isinstance(prompt_text, Chat):
+            messages = prompt_text.messages[0]['content']
 
-        if self._influence_tag[0] in prompt_text and self._influence_tag[1] in prompt_text:
+        elif isinstance(prompt_text, str):
+            messages = prompt_text
+
+        if self._influence_tag[0] in messages and self._influence_tag[1] in messages:
             instruction, raw_instruction = PayAttentionPipeline._get_text_between(
-                prompt_text,
+                messages,
                 self._influence_tag[0],
                 self._influence_tag[1]
             )
 
             self.mode = AttentionLevels.INFLUENCE
         
-        elif self._enhance_attention_tag[AttentionLevels.LEVEL_1][0] in prompt_text and self._enhance_attention_tag[AttentionLevels.LEVEL_1][1] in prompt_text:
+        elif self._enhance_attention_tag[AttentionLevels.LEVEL_1][0] in messages and self._enhance_attention_tag[AttentionLevels.LEVEL_1][1] in messages:
             instruction, raw_instruction = PayAttentionPipeline._get_text_between(
-                prompt_text,
+                messages,
                 self._enhance_attention_tag[AttentionLevels.LEVEL_1][0],
                 self._enhance_attention_tag[AttentionLevels.LEVEL_1][1]
             )
             
             delta = self.levels[AttentionLevels.LEVEL_1]
             self.mode = AttentionLevels.LEVEL_1
+            print(f"Applying level 1 enhancement to the prompt. Delta = {delta}")
 
 
-        elif self._enhance_attention_tag[AttentionLevels.LEVEL_2][0] in prompt_text and self._enhance_attention_tag[AttentionLevels.LEVEL_2][1] in prompt_text:
+        elif self._enhance_attention_tag[AttentionLevels.LEVEL_2][0] in messages and self._enhance_attention_tag[AttentionLevels.LEVEL_2][1] in messages:
             instruction, raw_instruction = PayAttentionPipeline._get_text_between(
-                prompt_text,
+                messages,
                 self._enhance_attention_tag[AttentionLevels.LEVEL_2][0],
                 self._enhance_attention_tag[AttentionLevels.LEVEL_2][1]
             )
             
             delta = self.levels[AttentionLevels.LEVEL_2]
             self.mode = self.levels[AttentionLevels.LEVEL_2]
+            print(f"Applying level 2 enhancement to the prompt. Delta = {delta}")
         
-        elif self._enhance_attention_tag[AttentionLevels.LEVEL_3][0] in prompt_text and self._enhance_attention_tag[AttentionLevels.LEVEL_3][1] in prompt_text:
+        elif self._enhance_attention_tag[AttentionLevels.LEVEL_3][0] in messages and self._enhance_attention_tag[AttentionLevels.LEVEL_3][1] in messages:
             instruction, raw_instruction = PayAttentionPipeline._get_text_between(
-                prompt_text,
+                messages,
                 self._enhance_attention_tag[AttentionLevels.LEVEL_3][0],
                 self._enhance_attention_tag[AttentionLevels.LEVEL_3][1]
             )
             
             delta = self.levels[AttentionLevels.LEVEL_3]
             self.mode = self.levels[AttentionLevels.LEVEL_3]
+            print(f"Applying level 3 enhancement to the prompt. Delta = {delta}")
 
 
         else:
@@ -177,8 +197,6 @@ class PayAttentionPipeline(TextGenerationPipeline):
         )
          
         splits = template.split(instruction)
-        print(instruction)
-        print(splits)
         initial_prompt = splits[0]
         context = raw_instruction.join(splits[1:])
 
@@ -209,11 +227,11 @@ class PayAttentionPipeline(TextGenerationPipeline):
         
         inputs = {
             "input_ids": tokens,
-            "prompt_text" : prompt_text
+            "prompt_text" : message
         }
 
         self.set_instruction(raw_instruction)
-
+        
         return inputs
     
     @override
@@ -248,8 +266,6 @@ class PayAttentionPipeline(TextGenerationPipeline):
         clean_up_tokenization_spaces=True
     ):  
         prompt = model_outputs['prompt_text']
-        print(prompt)
-        print(self.instruction)
         records = super().postprocess(model_outputs, return_type, clean_up_tokenization_spaces)
 
         if self.mode != AttentionLevels.INFLUENCE:

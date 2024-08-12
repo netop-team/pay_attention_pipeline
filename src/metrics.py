@@ -11,6 +11,26 @@ from time import time
 import gc
 
 class BaseMetric(ABC):
+
+    """
+    An abstract base class for computing influence metrics in a transformer model.
+
+    This class serves as a foundation for implementing various influence computation techniques by managing the 
+    attention-saving model, tokenization, and data storage. Subclasses should implement the `compute_influence` method 
+    to define specific influence computation strategies.
+
+    Args:
+        base_model (AutoModel): The pre-trained transformer model to be used for computing influences.
+        tokenizer (AutoTokenizer): The tokenizer associated with the pre-trained model.
+        num_layers (int): The number of layers in the transformer model.
+
+    Attributes:
+        attn_saver_model (GUIDEModel): A model wrapped with attention-saving capabilities.
+        tokenizer (AutoTokenizer): The tokenizer associated with the pre-trained model.
+        num_layers (int): The number of layers in the transformer model.
+        tokens (torch.Tensor or None): The input tokens processed by the model.
+        dp (Dict): A dictionary to store influence data, including influences, embeddings, and outputs.
+    """
     def __init__(
         self,
         base_model : AutoModel,
@@ -30,7 +50,15 @@ class BaseMetric(ABC):
 
         self.reset()
 
+
     def reset(self):
+        """
+        Resets the stored data for influence, embeddings, and outputs.
+
+        This method clears the current influence data and reinitializes the storage dictionary `dp` to store new 
+        influence values for each layer of the model.
+        """
+
         self.dp = {
             "influences":  {  layer : [] for layer in range(-1,self.num_layers)},
             "influences_heads":   {  head : [] for head in range(-1,self.num_layers)},
@@ -45,8 +73,20 @@ class BaseMetric(ABC):
         v2 : torch.Tensor,
         I2 : float,
         p_norm : int = 1,
-
     ):
+        """
+        Computes the weighted influence of two vectors using the specified norm.
+
+        Args:
+            v1 (torch.Tensor): The first vector for influence computation.
+            I1 (float): The influence weight associated with the first vector.
+            v2 (torch.Tensor): The second vector for influence computation.
+            I2 (float): The influence weight associated with the second vector.
+            p_norm (int, optional): The norm to be used for computing the vector norms. Default is 1.
+
+        Returns:
+            torch.Tensor: The computed influence as a weighted combination of the two input vectors.
+        """
         n1 = torch.norm(v1, dim = 1, p = p_norm)\
             .pow(p_norm)
         n2 = torch.norm(v2, dim = 1, p = p_norm)\
@@ -64,6 +104,16 @@ class BaseMetric(ABC):
         p_norm : int = 1,
         **kwargs
     ):
+        """
+        Abstract method to compute influence at a specific layer.
+
+        Subclasses must implement this method to define the specific way influence is computed at a given layer.
+
+        Args:
+            layer (int): The layer index at which to compute the influence.
+            use_values (bool, optional): Whether to use value vectors in the influence computation. Default is False.
+            p_norm (int, optional): The norm to be used for influence computation. Default is 1.
+        """
         ...
 
     def __call__(
@@ -75,6 +125,22 @@ class BaseMetric(ABC):
         *args: torch.Any, 
         **kwds: torch.Any
     ):
+        """
+        Executes the influence computation for a given input text and instruction.
+
+        This method tokenizes the input, sets the delta attention, and processes the model through all layers to compute 
+        the influence of the instruction on the model's behavior.
+
+        Args:
+            text (str): The input text to be processed.
+            instruction (str): The specific instruction to measure influence on.
+            delta_attention (float): The change in attention to apply during influence computation.
+            use_values (bool, optional): Whether to use value vectors in the influence computation. Default is False.
+
+        Returns:
+            Dict: A dictionary containing the computed influences for each layer.
+        """
+
         self.attn_saver_model.remove_hooks()
         results = dict()
         self.attn_saver_model.set_delta_attention(delta_attention)
@@ -178,6 +244,7 @@ class BaseMetric(ABC):
 
 
 class Influence(BaseMetric):
+    
     def compute_influence(
         self, 
         layer : int,
@@ -185,6 +252,17 @@ class Influence(BaseMetric):
         p_norm: int = 1,
         **kwargs
     ):
+        """
+        Computes the influence of a specific layer in the transformer model.
+
+        This method calculates the influence of the attention mechanism at the specified layer on the model's output, 
+        optionally incorporating the value vectors into the calculation.
+
+        Args:
+            layer (int): The layer index at which to compute the influence.
+            use_values (bool, optional): Whether to use value vectors in the influence computation. Default is False.
+            p_norm (int, optional): The norm to be used for influence computation. Default is 1.
+        """
         values = self.attn_saver_model\
             .internal_parameters[layer]\
             ['value']\
@@ -254,15 +332,17 @@ class InfluenceHeads(BaseMetric):
         p_norm : int = 1,
         **kwargs
     ):
-        '''
-        embedding : n dimensional tensor
-        embedding_idx : int
-        layer : int
-        out : n dimensional tensor
-        attn_vector : n dimensional tensor
-        instruction_tokens_id : k dimensional tensor
-        values : n x 4096 matrix
-        '''
+        """
+        Computes the influence of individual attention heads at a specific layer.
+
+        This method calculates how much each attention head contributes to the overall influence in the specified layer.
+
+        Args:
+            layer (int): The layer index at which to compute head-level influence.
+            attn_matrix (torch.Tensor): The attention matrix from which to compute the influence.
+            values (torch.Tensor, optional): The value vectors associated with the attention heads. Default is None.
+            p_norm (int, optional): The norm to be used for influence computation. Default is 1.
+        """
 
 
         if values is not None:
@@ -283,14 +363,15 @@ class InfluenceHeads(BaseMetric):
         self,
         attn_output_per_head : torch.Tensor,
     ):
-        """_summary_
+        """
+        Computes the combined influence of all attention heads by concatenating their outputs.
 
         Args:
-            attn_output_per_head (torch.Tensor): size (32 x s x 128)
+            attn_output_per_head (torch.Tensor): The output tensor from all attention heads.
 
         Returns:
-            _type_: _description_
-        """        
+            torch.Tensor: The combined influence across all heads.
+        """
         influence_heads = self.dp['influences_heads']
 
         dtype = attn_output_per_head.dtype
@@ -309,6 +390,16 @@ class InfluenceHeads(BaseMetric):
         embedding : torch.Tensor,
         layer : int
     ):  
+        """
+        Combines the influence of concatenated attention heads with the overall layer influence.
+
+        Args:
+            influence_concat (torch.Tensor): The combined influence from all heads.
+            concatenated_output (torch.Tensor): The concatenated output of all attention heads.
+            embedding (torch.Tensor): The embedding at the current layer.
+            layer (int): The layer index at which to apply the influence computation.
+        """
+
         if layer - 2 in self.dp['influences']:
             if self.dp['influences'][layer-2].device != "cpu":
                 self.dp['influences'][layer-2].to("cpu")
@@ -392,6 +483,17 @@ class InfluenceHeads(BaseMetric):
         )
 
 class AttentionRollout(Influence):
+    """
+    A class to compute the average influence across layers using an attention rollout mechanism.
+
+    This class extends the `Influence` class to average the influence scores across all layers, providing a more 
+    holistic view of how attention impacts the model's output.
+
+    Args:
+        base_model (AutoModel): The pre-trained transformer model to be used for computing influences.
+        tokenizer (AutoTokenizer): The tokenizer associated with the pre-trained model.
+        num_layers (int): The number of layers in the transformer model.
+    """
     @override
     def influence_of_sums(
         self,
@@ -401,4 +503,20 @@ class AttentionRollout(Influence):
         I2 : float,
         p_norm : int = 1,
     ):
+        """
+        Averages the influence scores from two consecutive layers.
+
+        This method overrides the influence calculation to simply average the influence values, providing a simplified 
+        attention rollout across layers.
+
+        Args:
+            v1 (torch.Tensor): The first vector for influence computation.
+            I1 (float): The influence score from the first vector.
+            v2 (torch.Tensor): The second vector for influence computation.
+            I2 (float): The influence score from the second vector.
+            p_norm (int, optional): The norm to be used for computing the vector norms. Default is 1.
+
+        Returns:
+            torch.Tensor: The averaged influence across the two input vectors.
+        """
         return (I1 + I2)/2

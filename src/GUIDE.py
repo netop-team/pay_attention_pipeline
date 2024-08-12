@@ -20,6 +20,20 @@ class GUIDEModel(torch.nn.Module):
         *args,
         **kwargs
     ) -> None:
+        """
+        A model that extends a pre-trained transformer model with custom attention mechanisms.
+
+        The GUIDEModel class allows modifying the attention mechanisms in specific layers of a transformer model. It can
+        augment the attention with a delta value, apply rotary position embeddings, and capture internal parameters
+        during the forward pass for analysis.
+
+        Args:
+            model (AutoModel): The base transformer model to be extended.
+            tokenizer (AutoTokenizer): The tokenizer corresponding to the base model.
+            delta_attention (float, optional): The value to modify attention scores. Defaults to None.
+            augmented_layers (Union[str, List], optional): Specifies which layers to augment ('all', 'none', 'first', 'last', or a list of layer indices). Defaults to 'all'.
+            should_save_params (bool, optional): Whether to save internal parameters during the forward pass. Defaults to True.
+        """
         
         super().__init__(*args, **kwargs)
 
@@ -46,16 +60,36 @@ class GUIDEModel(torch.nn.Module):
         return self.base_model.generate(*args,**kwargs)
     
     def set_delta_attention(self, delta):
+        """
+        Sets the delta attention value for modifying attention scores.
+
+        Args:
+            delta (float): The value to adjust attention scores.
+        """
         self.DELTA_ATTENTION = delta
     
     def set_reference_tokens(self, start_idx : int, end_idx : int):
+        """
+        Sets the start and end indices of the tokens to be used as references for attention modification.
+
+        Args:
+            start_idx (int): The starting index of the reference tokens.
+            end_idx (int): The ending index of the reference tokens.
+        """
+
         self.start_idx = start_idx
         self.end_idx = end_idx
 
     def reset_internal_parameters(self):
+        """
+        Resets the internal parameters list that stores intermediate values during the forward pass.
+        """
         self.internal_parameters = []
 
     def remove_hooks(self):
+        """
+        Removes any forward hooks attached to the self-attention modules of the base model.
+        """
         for name, module in self.base_model.named_modules():
             if name.endswith("self_attn"):
                 module._forward_hooks = OrderedDict()
@@ -63,6 +97,9 @@ class GUIDEModel(torch.nn.Module):
         self.has_hook = False
 
     def insert_hook(self):
+        """
+        Inserts forward hooks into the self-attention modules of the base model to modify and capture attention-related parameters.
+        """
         for name, internal_module in self.base_model.named_modules():
             if name.endswith("self_attn"):
                 internal_module.register_forward_hook(self.get_forward_params)
@@ -70,6 +107,17 @@ class GUIDEModel(torch.nn.Module):
         self.has_hook = True
 
     def __call__(self, tokens, *args: torch.Any, **kwds: torch.Any) -> torch.Any:
+        """
+        Calls the base model with the provided tokens and captures the internal parameters.
+
+        Args:
+            tokens (torch.Tensor): The input tokens for the model.
+            *args: Variable length argument list for the base model's forward method.
+            **kwds: Arbitrary keyword arguments for the base model's forward method.
+
+        Returns:
+            The output of the base model.
+        """
         self.internal_parameters =[]
         return self.base_model(tokens, **kwds)
 
@@ -118,7 +166,14 @@ class GUIDEModel(torch.nn.Module):
 
     @torch.no_grad
     def get_forward_params(self, module, input, output ):
+        """
+        Modifies and captures attention-related parameters during the forward pass.
 
+        Args:
+            module (nn.Module): The current attention module being processed.
+            input (torch.Tensor): The input tensor to the module.
+            output (torch.Tensor): The output tensor from the module.
+        """
         if type(self.augmented_layers) != str:
             if module.layer_idx in self.augmented_layers:
                 return self.change_and_fetch_attention(
@@ -188,7 +243,18 @@ class GUIDEModel(torch.nn.Module):
                 )
 
     def change_and_fetch_attention(self,module,input,output, delta_attention):
-        # print(f"Augmenting attention on layer = {module.layer_idx}")
+        """
+        Modifies attention scores and fetches internal parameters for analysis.
+
+        Args:
+            module (nn.Module): The current attention module.
+            input (torch.Tensor): The input tensor to the module.
+            output (torch.Tensor): The output tensor from the module.
+            delta_attention (float): The value to adjust attention scores.
+
+        Returns:
+            torch.Tensor: The modified attention output.
+        """
 
         if input[0].shape[1] == 1:
             return

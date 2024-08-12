@@ -14,6 +14,17 @@ class AttentionLevels(Enum):
     INFLUENCE= 4
 
 class PayAttentionPipeline(TextGenerationPipeline):
+    """
+    A custom text generation pipeline that adds specialized attention mechanisms to generated text. 
+    It supports different attention metrics such as influence and attention rollout, 
+    and allows for dynamic adjustment of attention levels during text generation.
+
+    Args:
+        metric (str): The metric to use for attention. Options are "influence" or "attention_rollout". Default is "influence".
+        num_layers (int): The number of layers in the model for which the attention mechanism will be applied. Default is 32.
+        *args: Additional positional arguments for the parent class.
+        **kwargs: Additional keyword arguments for the parent class.
+    """
     def __init__(
         self, 
         metric : str = "influence",
@@ -21,6 +32,7 @@ class PayAttentionPipeline(TextGenerationPipeline):
         *args, 
         **kwargs,
     ):  
+        
         if 'delta_mid' in kwargs:
             delta_mid = kwargs['delta_mid']
             kwargs.pop('delta_mid')
@@ -31,7 +43,6 @@ class PayAttentionPipeline(TextGenerationPipeline):
         metric_options = ["influence", "attention_rollout"]
         assert metric in metric_options, f"metric must be one of {metric_options}"
         
-        # ADD DOCSTRING
         super().__init__(*args, **kwargs)
 
         if "mistral" in str(type(self.model)).lower():
@@ -66,7 +77,13 @@ class PayAttentionPipeline(TextGenerationPipeline):
         self.instruction : str = None
 
     def set_influence_model(self, metric : str):
-        # TO BE CONTINUED
+        """
+        Sets the influence model based on the provided metric.
+
+        Args:
+            metric (str): The metric to use for the influence model. 
+                          Must be either "influence" or "attention_rollout".
+        """
         if metric == "influence":
             self.influence_model = Influence(
                 self.model,
@@ -87,6 +104,17 @@ class PayAttentionPipeline(TextGenerationPipeline):
         start_word : str, 
         end_word: str
     ):
+        """
+        Extracts the text between two specified words within a string.
+
+        Args:
+            text (str): The text from which to extract.
+            start_word (str): The word marking the start of the extraction.
+            end_word (str): The word marking the end of the extraction.
+
+        Returns:
+            tuple: A tuple containing the full instruction (with tags) and the raw instruction (without tags).
+        """
         # Escape tokens to handle special regex characters
         start_word_esp = re.escape(start_word)
         end_word_esp = re.escape(end_word)
@@ -105,9 +133,16 @@ class PayAttentionPipeline(TextGenerationPipeline):
         return instruction, raw_instruction 
     
     def set_instruction(self, instruction : str):
+        """
+        Sets the instruction that will be used for guiding the attention mechanism.
+
+        Args:
+            instruction (str): The instruction to be set.
+        """
         self.instruction = instruction
 
     def __call__(self, text_inputs, metric : str = None, **kwargs):
+        
         metric_options = ["influence", "attention_rollout", None]
         assert metric in metric_options, f"metric must be one of {metric_options}"
 

@@ -34,6 +34,27 @@ To set up the environment for this project, follow these steps:
 
 ## Usage
 
+ Normally, one would load a pipeline using the Hugging Face pipeline as shown below:
+
+```python
+from transformers import pipeline
+
+pipe = pipeline(
+   "text-generation",
+   model="your_model_name",
+)
+
+prompt = '''
+   The Eiffel Tower, an iconic symbol of Paris and France, was completed in 1889 as the centerpiece of the Exposition Universelle, a world’s fair celebrating the centennial of the French Revolution...
+   '''
+
+out = pipe("Rewrite in French" + prompt, max_new_tokens = 100)
+```
+
+However, with this repository, you can use our custom ```PayAttentionPipeline``` to take advantage of the specialized features provided here: GUIDE and Influence.
+
+If your prompt does not contain the tags `<?-> <-?>`, `<!-> <-!>`, `<!!-> <-!!>` or `<!!!-> <-!!!>`, our pipeline works exactly the same as HuggingFace's one
+
 ### Influence Calculation
 
 The influence metric assesses the importance of a subsequence in the context of the model's predictions. Here’s how to compute it:
@@ -42,6 +63,7 @@ The influence metric assesses the importance of a subsequence in the context of 
 
    ```python
    from transformers import pipeline
+   from pipeline.pay_attention_pipeline import PayAttentionPipeline
 
    pipe = pipeline(
        "pay-attention",

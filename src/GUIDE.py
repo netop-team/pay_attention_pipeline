@@ -102,6 +102,7 @@ class GUIDEModel(torch.nn.Module):
         self.start_idx = None
         self.end_idx = None
         self.save_internal_params = should_save_params
+        self.embedding_dim = model.model.embed_tokens.embedding_dim
         
         options = ["all", "none", "first", "last"]
 
@@ -385,7 +386,7 @@ class GUIDEModel(torch.nn.Module):
             layer_dict = {
                 # "query": query_states,
                 # "key": key_states,
-                "value": value_states.reshape(-1,4096).to("cpu"),#.mean(dim= 1),
+                "value": value_states.reshape(-1,self.embedding_dim).to("cpu"),#.mean(dim= 1),
                 "output_before_mlp" : output_before_mlp.to("cpu"),
                 "attention" : attn_weights.to("cpu"), #.mean(dim=1),#.to("cpu"),
                 "avg_attention_heads" : attn_weights.mean(dim = 1).to("cpu"),

@@ -216,7 +216,9 @@ class PayAttentionPipeline(TextGenerationPipeline):
 
 
         else:
-            return super().preprocess(prompt_text, prefix, handle_long_generation, add_special_tokens, truncation, padding, max_length, **generate_kwargs)
+
+            inputs = super().preprocess(prompt_text, prefix, handle_long_generation, add_special_tokens, truncation, padding, max_length, **generate_kwargs)
+            return inputs
         
         self.guide_model.set_delta_attention(delta)
         
@@ -228,7 +230,8 @@ class PayAttentionPipeline(TextGenerationPipeline):
 
         template = self.tokenizer.apply_chat_template(
             message,
-            tokenize= False
+            tokenize= False,
+            add_generation_prompt=True
         )
          
         splits = template.split(instruction)

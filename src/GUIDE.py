@@ -9,63 +9,9 @@ from torch import nn
 import pdb
 import seaborn as sns
 import matplotlib.pyplot as plt
+from transformers.cache_utils import HybridCache
+import gc
 
-def decoder_forward(
-    self,
-    hidden_states: torch.Tensor,
-    attention_mask: Optional[torch.Tensor] = None,
-    position_ids: Optional[torch.LongTensor] = None,
-    past_key_value = None,
-    output_attentions: Optional[bool] = False,
-    use_cache: Optional[bool] = False,
-    cache_position: Optional[torch.LongTensor] = None,
-) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
-        """
-        Args:
-            hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
-            attention_mask (`torch.FloatTensor`, *optional*):
-                attention mask of size `(batch_size, sequence_length)` if flash attention is used or `(batch_size, 1,
-                query_sequence_length, key_sequence_length)` if default attention is used.
-            output_attentions (`bool`, *optional*):
-                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
-                returned tensors for more detail.
-            use_cache (`bool`, *optional*):
-                If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
-                (see `past_key_values`).
-            past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
-        """
-
-        residual = hidden_states
-
-        hidden_states = self.input_layernorm(hidden_states)
-
-        # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
-            hidden_states,
-            attention_mask,
-            position_ids,
-            past_key_value,
-            output_attentions,
-            use_cache,
-            cache_position,
-        )
-        hidden_states = residual + hidden_states
-
-        # Fully Connected
-        residual = hidden_states
-        hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states)
-        hidden_states = residual + hidden_states
-
-        outputs = (hidden_states,)
-
-        if output_attentions:
-            outputs += (self_attn_weights,)
-
-        if use_cache:
-            outputs += (present_key_value,)
-
-        return outputs
 
 class GUIDEModel(torch.nn.Module):
     def __init__(
@@ -112,19 +58,8 @@ class GUIDEModel(torch.nn.Module):
         self.augmented_layers = augmented_layers
         self.has_hook = False
         self.remove_hooks()
-        self.insert_hook()
+        # self.insert_hook()
         self.num_layers = len(self.base_model.model.layers)
-
-        self.insert_code_on_forward()
-
-    def insert_code_on_forward(self,):
-
-        for layer in range(self.num_layers):
-            self.base_model.model.layers[layer].forward = types.MethodType(
-                decoder_forward, 
-                self.base_model.model.layers[layer]
-            )
-
 
     def generate(self, *args,**kwargs):
         self.internal_parameters =[]
@@ -173,7 +108,14 @@ class GUIDEModel(torch.nn.Module):
         """
         for name, internal_module in self.base_model.named_modules():
             if name.endswith("self_attn"):
-                internal_module.register_forward_hook(self.get_forward_params)
+                internal_module.register_forward_hook(self.get_forward_params, with_kwargs = True)
+
+        self.has_hook = True
+
+    def insert_pre_hook(self):
+        for name, internal_module in self.base_model.named_modules():
+            if name.endswith("self_attn"):
+                internal_module.register_forward_pre_hook(self.change_attention_mask, with_kwargs = True)
 
         self.has_hook = True
 
@@ -236,7 +178,7 @@ class GUIDEModel(torch.nn.Module):
       return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
     @torch.no_grad
-    def get_forward_params(self, module, input, output ):
+    def get_forward_params(self, module, input, kwargs, output ):
         """
         Modifies and captures attention-related parameters during the forward pass.
 
@@ -250,6 +192,7 @@ class GUIDEModel(torch.nn.Module):
                 return self.change_and_fetch_attention(
                     module,
                     input,
+                    kwargs,
                     output,
                     delta_attention=self.DELTA_ATTENTION
                 )
@@ -258,6 +201,7 @@ class GUIDEModel(torch.nn.Module):
                 self.change_and_fetch_attention(
                     module,
                     input,
+                    kwargs,
                     output,
                     delta_attention=0
                 )
@@ -267,6 +211,7 @@ class GUIDEModel(torch.nn.Module):
             return self.change_and_fetch_attention(
                 module,
                 input,
+                kwargs,
                 output,
                 delta_attention=self.DELTA_ATTENTION
             )
@@ -275,6 +220,7 @@ class GUIDEModel(torch.nn.Module):
             return self.change_and_fetch_attention(
                 module,
                 input,
+                kwargs,
                 output,
                 delta_attention = 0
             )
@@ -284,6 +230,7 @@ class GUIDEModel(torch.nn.Module):
                 return self.change_and_fetch_attention(
                     module,
                     input,
+                    kwargs,
                     output,
                     delta_attention=self.DELTA_ATTENTION
                 )
@@ -292,6 +239,7 @@ class GUIDEModel(torch.nn.Module):
                 self.change_and_fetch_attention(
                     module,
                     input,
+                    kwargs,
                     output,
                     delta_attention=0
                 )
@@ -301,6 +249,7 @@ class GUIDEModel(torch.nn.Module):
                 return self.change_and_fetch_attention(
                     module,
                     input,
+                    kwargs,
                     output,
                     delta_attention=self.DELTA_ATTENTION
                 )
@@ -309,11 +258,21 @@ class GUIDEModel(torch.nn.Module):
                 self.change_and_fetch_attention(
                     module,
                     input,
+                    kwargs,
                     output,
                     delta_attention=0
                 )
 
-    def change_and_fetch_attention(self,module,input,output, delta_attention):
+    def change_attention_mask(self, module, input, kwargs):
+        attention_mask = deepcopy(kwargs['attention_mask'])
+        attention_mask[:,:,:,self.start_idx:self.end_idx] += self.DELTA_ATTENTION
+        
+        kwargs['attention_mask'] = attention_mask
+        return (input, kwargs)
+
+
+
+    def change_and_fetch_attention(self,module,input, kwargs,output, delta_attention):
         """
         Modifies attention scores and fetches internal parameters for analysis.
 
@@ -327,13 +286,17 @@ class GUIDEModel(torch.nn.Module):
             torch.Tensor: The modified attention output.
         """
 
-        if input[0].shape[1] == 1:
-            return
 
-        hidden_states = input[0]
+        hidden_states = kwargs['hidden_states']
+
+        if hidden_states.shape[1] == 1:
+            return
+        
         bsz, q_len, _ = hidden_states.size()
-        attention_mask = deepcopy(input[1])
-        position_ids = input[2]
+        attention_mask = deepcopy(kwargs['attention_mask'])
+        position_ids = kwargs['position_ids']
+        past_key_value = kwargs['past_key_value']
+        cache_position = kwargs['cache_position']
 
         attention_mask[:,:,:,self.start_idx:self.end_idx] += delta_attention
 
@@ -348,11 +311,37 @@ class GUIDEModel(torch.nn.Module):
         cos, sin = module.rotary_emb(value_states, position_ids)
         query_states, key_states = self.apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
+        
+        if past_key_value is not None and type(past_key_value) == HybridCache:
+            # sin and cos are specific to RoPE models; cache_position needed for the static cache
+            cache_kwargs = {
+                "sin": sin,
+                "cos": cos,
+                "cache_position": cache_position,
+
+            }
+            try:
+                cache_kwargs['sliding_window'] = module.sliding_window
+            except:
+                print("no sliding window")
+
+            # past_key_value.key_cache[module.layer_idx].zero_()
+            # past_key_value.value_cache[module.layer_idx].zero_()
+
+            key_states, value_states = past_key_value.update(key_states, value_states, module.layer_idx, cache_kwargs)
+       
         key_states = self.repeat_kv(key_states, module.num_key_value_groups)
         value_states = self.repeat_kv(value_states, module.num_key_value_groups)
+
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(module.head_dim)
 
-        # if attention_mask is not None:  # no matter the length, we just slice it
+        if 'attn_logit_softcapping' in self.base_model.config.__dict__ and self.base_model.config.attn_logit_softcapping is not None:
+            attn_softcapping = self.base_model.config.attn_logit_softcapping
+            attn_weights = attn_weights / attn_softcapping
+            attn_weights = torch.tanh(attn_weights)
+            attn_weights = attn_weights * attn_softcapping
+
+        # no matter the length, we just slice it
         causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
         attn_weights = attn_weights + causal_mask
 
@@ -386,11 +375,11 @@ class GUIDEModel(torch.nn.Module):
             layer_dict = {
                 # "query": query_states,
                 # "key": key_states,
-                "value": value_states.reshape(-1,self.embedding_dim).to("cpu"),#.mean(dim= 1),
+                "value": value_states.reshape(-1, module.v_proj.out_features).to("cpu"),#.mean(dim= 1),
                 "output_before_mlp" : output_before_mlp.to("cpu"),
                 "attention" : attn_weights.to("cpu"), #.mean(dim=1),#.to("cpu"),
                 "avg_attention_heads" : attn_weights.mean(dim = 1).to("cpu"),
-                "raw_embedding": input[0].to("cpu"),
+                "raw_embedding": hidden_states.to("cpu"),
                 "modified_embedding" : attn_output.to("cpu"),
                 # "QK^T": qkT
             }

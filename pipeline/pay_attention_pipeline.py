@@ -28,7 +28,6 @@ class PayAttentionPipeline(TextGenerationPipeline):
     def __init__(
         self, 
         metric : str = "influence",
-        num_layers : int = 32,
         *args, 
         **kwargs,
     ):  
@@ -39,17 +38,11 @@ class PayAttentionPipeline(TextGenerationPipeline):
         else:
             delta_mid = 1.
         
-        self.num_layers = num_layers
         metric_options = ["influence", "attention_rollout"]
         assert metric in metric_options, f"metric must be one of {metric_options}"
         
         super().__init__(*args, **kwargs)
-
-        if "mistral" in str(type(self.model)).lower():
-            self.instruction_tokens = ['[INST]', '[/INST]']
-
-        elif "llama" in str(type(self.model)).lower():
-            self.instruction_tokens = -1 # TO COMPLETE
+        self.num_layers = len(self.model.model.layers)
 
         self.guide_model = GUIDEModel(
             self.model,
@@ -247,8 +240,9 @@ class PayAttentionPipeline(TextGenerationPipeline):
         start_idx = initial_tokens.size(1)
         end_idx = start_idx + instruction_tokens.size(1)
         
+        print(initial_tokens,instruction_tokens,context_tokens)
         tokens = torch.concat([
-            initial_tokens.squeeze(), 
+            initial_tokens.squeeze(dim = 1), 
             instruction_tokens.squeeze(),
             context_tokens.squeeze()
         ]).unsqueeze(0)\
@@ -259,7 +253,11 @@ class PayAttentionPipeline(TextGenerationPipeline):
         assert raw_instruction in instruction_words, "Error in tokenization. Not giving attention to correct tokens"
 
         self.guide_model.set_reference_tokens(start_idx, end_idx)
-        self.guide_model.insert_hook()
+
+        if self.mode == AttentionLevels.INFLUENCE:
+            self.guide_model.insert_hook()
+        elif self.mode:
+            self.guide_model.insert_pre_hook()
 
         print(f"Inserting special attention on '{instruction_words}'")
         

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
-from src.GUIDE import GUIDEModel
+from ..src.GUIDE import GUIDEModel
 import pandas as pd
 from transformers import AutoModel, AutoTokenizer
 from IPython.display import clear_output
@@ -44,7 +44,7 @@ class BaseMetric(ABC):
             should_save_params=True
         )
 
-        self.tokenizer = tokenizer
+        self.tokenizer : AutoTokenizer = tokenizer
         self.num_layers : int = num_layers
         self.tokens = None
 
@@ -116,10 +116,13 @@ class BaseMetric(ABC):
         """
         ...
 
+    def set_reference_tokens(self, start_idx : int, end_idx : int):
+        self.attn_saver_model.set_reference_tokens(start_idx, end_idx)
+
+
     def __call__(
         self,
-        text : str, 
-        instruction : str,
+        tokens : torch.Tensor,
         delta_attention : float,
         use_values : bool = False,
         *args: torch.Any, 
@@ -142,55 +145,13 @@ class BaseMetric(ABC):
         """
 
         self.attn_saver_model.remove_hooks()
+        self.attn_saver_model.insert_hook()
         results = dict()
         self.attn_saver_model.set_delta_attention(delta_attention)
-
-        messages = [
-            {"role": "user", "content": text},
-        ]
-
-        template = self.tokenizer\
-            .apply_chat_template(messages, tokenize = False)
-        
-        # return template
-        
-        splits = template.split(instruction)
-        initial_prompt = splits[0]
-        context = instruction.join(splits[1:])
-
-        assert (hash(initial_prompt+instruction+context) == hash(template)), "Error in spliting strings. Initial and final string does not match"
-
-        initial_tokens = self.tokenizer.encode(initial_prompt, return_tensors='pt', add_special_tokens = False)
-        instruction_tokens = self.tokenizer.encode(instruction, return_tensors='pt', add_special_tokens = False)
-        context_tokens = self.tokenizer.encode(context, return_tensors='pt', add_special_tokens = False)
-
-        start_idx = initial_tokens.size(1)
-        end_idx = start_idx + instruction_tokens.size(1)
-
-        
-        tokens = torch.concat([
-            initial_tokens.squeeze(), 
-            instruction_tokens.squeeze(),
-            context_tokens.squeeze()
-        ]).unsqueeze(0)
-
-        self.tokens = tokens
-
-        q = self.tokenizer.decode(tokens.squeeze()[start_idx: end_idx])
-
-        assert instruction in q, "Error in tokenization. Not giving attention to correct tokens"
+        start_idx, end_idx = self.attn_saver_model.start_idx, self.attn_saver_model.end_idx
 
 
-        self.attn_saver_model.set_reference_tokens(start_idx, end_idx)
-        self.attn_saver_model.insert_hook()
-
-
-        print(f"Studying influence to '{q}'")
-
-        t0 = time()
-        with torch.no_grad():
-            self.attn_saver_model(tokens, output_attentions = True)
-        t1 = time()
+        self.attn_saver_model(tokens)
 
         token_index_in_text = torch.arange(start_idx, end_idx, step=1)
 

@@ -8,7 +8,7 @@ from transformers.image_processing_utils import BaseImageProcessor
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.feature_extraction_utils import PreTrainedFeatureExtractor
 from transformers import AutoModelForCausalLM
-from pipeline.pay_attention_pipeline import PayAttentionPipeline
+from pay_attention_pipeline.pipeline.main_pipeline import PayAttentionPipeline
 
 from transformers.pipelines.base import Pipeline
 

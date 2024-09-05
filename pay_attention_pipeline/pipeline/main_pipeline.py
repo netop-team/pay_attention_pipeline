@@ -1,11 +1,11 @@
 from transformers.pipelines import TextGenerationPipeline
 from transformers.pipelines.text_generation import Chat, ReturnType
-from src.GUIDE import GUIDEModel
+from ..src.GUIDE import GUIDEModel
 from typing_extensions import override
 import re
 from enum import Enum
 import torch
-from src import Influence, AttentionRollout
+from ..src.metrics import Influence, AttentionRollout
 
 class AttentionLevels(Enum):
     LEVEL_1= 1
@@ -14,6 +14,7 @@ class AttentionLevels(Enum):
     INFLUENCE= 4
 
 class PayAttentionPipeline(TextGenerationPipeline):
+    env = 'local'
     """
     A custom text generation pipeline that adds specialized attention mechanisms to generated text. 
     It supports different attention metrics such as influence and attention rollout, 
@@ -49,6 +50,8 @@ class PayAttentionPipeline(TextGenerationPipeline):
             self.tokenizer,
             should_save_params=False
         )
+
+        self.delta_influence =0 
         
         # add influence model
         self.set_influence_model(metric)
@@ -68,6 +71,9 @@ class PayAttentionPipeline(TextGenerationPipeline):
 
         self.mode : AttentionLevels = None
         self.instruction : str = None
+
+    def remove_hooks(self):
+        self.guide_model.remove_hooks()
 
     def set_influence_model(self, metric : str):
         """
@@ -134,12 +140,14 @@ class PayAttentionPipeline(TextGenerationPipeline):
         """
         self.instruction = instruction
 
-    def __call__(self, text_inputs, metric : str = None, **kwargs):
+    def __call__(self, text_inputs, metric : str = 'influence', delta_influence = 0,**kwargs):
         
         metric_options = ["influence", "attention_rollout", None]
         assert metric in metric_options, f"metric must be one of {metric_options}"
 
+        
         self.set_influence_model(metric)
+        self.delta_influence = delta_influence
 
         return super().__call__(text_inputs, **kwargs)
     
@@ -240,11 +248,11 @@ class PayAttentionPipeline(TextGenerationPipeline):
         start_idx = initial_tokens.size(1)
         end_idx = start_idx + instruction_tokens.size(1)
         
-        print(initial_tokens,instruction_tokens,context_tokens)
+        
         tokens = torch.concat([
-            initial_tokens.squeeze(dim = 1), 
-            instruction_tokens.squeeze(),
-            context_tokens.squeeze()
+            initial_tokens.squeeze(dim = 0), 
+            instruction_tokens.squeeze(dim = 0),
+            context_tokens.squeeze(dim=0)
         ]).unsqueeze(0)\
             .to(torch.int)
 
@@ -253,13 +261,14 @@ class PayAttentionPipeline(TextGenerationPipeline):
         assert raw_instruction in instruction_words, "Error in tokenization. Not giving attention to correct tokens"
 
         self.guide_model.set_reference_tokens(start_idx, end_idx)
+        self.influence_model.set_reference_tokens(start_idx, end_idx)
 
         if self.mode == AttentionLevels.INFLUENCE:
             self.guide_model.insert_hook()
-        elif self.mode:
+            print(f"Computing influence on '{instruction_words}'. Delta = {self.delta_influence}")
+        else:
             self.guide_model.insert_pre_hook()
-
-        print(f"Inserting special attention on '{instruction_words}'")
+        
         
         inputs = {
             "input_ids": tokens,
@@ -302,7 +311,9 @@ class PayAttentionPipeline(TextGenerationPipeline):
         clean_up_tokenization_spaces=True
     ):  
         prompt = model_outputs['prompt_text']
+        tokens = model_outputs['input_ids']
         records = super().postprocess(model_outputs, return_type, clean_up_tokenization_spaces)
+        records[0]['tokens'] = tokens
 
         if self.mode != AttentionLevels.INFLUENCE:
             self.guide_model.remove_hooks()
@@ -310,9 +321,8 @@ class PayAttentionPipeline(TextGenerationPipeline):
 
         else:
             influence = self.influence_model(
-                prompt,
-                self.instruction,
-                delta_attention= 0
+                tokens,
+                delta_attention= self.delta_influence
             )
 
             records[0]["influence"]= influence

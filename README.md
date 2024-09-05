@@ -123,12 +123,17 @@ While GUIDE does not require additional training, it does necessitate the carefu
 
 1. **Compute Influence**
 
-   Wrap the text you want to compute the importance between `<?-> <-?>` tokens. The output will contain a dictionary of tensors, where each tensor represents the importance of the enclosured text through context length. 
+   To compute the importance of specific text within a given context, wrap the text with `<?->` and `<?->` tokens. The output will be a dictionary of tensors, where each tensor represents the importance of the enclosed text across the context length.
 
-   We provide two metrics you can use: Attention Rollout and Influence. Influence is computed by default
+   We provide two metrics to measure importance:
 
-   
-   If you want to compute the importance with a $\Delta \neq =0$, add the parameter `delta_influence` For example:
+   1. **Influence** (default)
+   2. **Attention Rollout**
+
+   By default, **Influence** is used to compute the importance. If you want to compute importance with a custom value for `Δ` (i.e., `Δ ≠ 0`), you can add the parameter `delta_influence`.
+
+# Code sample for computing importance with delta_influence
+
 
    ```python
    prompt = '''

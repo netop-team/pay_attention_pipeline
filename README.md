@@ -65,8 +65,6 @@ However, with this repository, you can use our custom ```PayAttentionPipeline```
 
 If your prompt does not contain the tags `<?-> <-?>`, `<!-> <-!>`, `<!!-> <-!!>` or `<!!!-> <-!!!>`, our pipeline works exactly the same as HuggingFace's one
 
-### Influence Calculation
-
 The influence metric assesses the importance of a subsequence in the context of the model's predictions. Here’s how to compute it:
 
 1. **Load the Pipeline**

@@ -22,7 +22,10 @@ Large Language Models (LLMs) often struggle with aligning outputs to user instru
 GUIDE allows users to highlight critical instructions in their input using tags `<!-> <-!>`. It modifies the attention weights to focus more on tagged text. For example:
 
 ```python
-message = [{'role': 'user', 'content': "<!-> Rewrite in French: <-!> Paris is the most visited city in the world."}]
+message = [{
+  'role': 'user',
+  'content': "<!-> Rewrite in French: <-!> Paris is the most visited city in the world."
+}]
 out = pipe(message, max_new_tokens=100)
 ```
 

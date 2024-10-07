@@ -13,7 +13,7 @@ For more details, you can read our  [paper](https://arxiv.org/abs/2409.19001).
 
 Large Language Models (LLMs) often struggle with aligning outputs to user instructions, especially with longer contexts. Traditional solutions like fine-tuning are resource-intensive. GUIDE introduces a more efficient method by allowing users to emphasize important instructions within prompts, improving accuracy without additional training.
 
-<img src="img/PayAttentionToWhatMatters-Workshop-extended.drawio.png" alt="GUIDE" style="width:50%;">
+<img src="img/PayAttentionToWhatMatters-Workshop-extended.drawio.png" alt="GUIDE" style="width:80%;">
 
 
 ## GUIDE

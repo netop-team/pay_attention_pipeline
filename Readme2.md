@@ -55,7 +55,7 @@ You can use `PayAttentionPipeline` similarly to the standard Hugging Face pipeli
    message = [{'role': 'user', 'content': "<!-> Rewrite in French: <-!> Your text"}]
    out = pipe(message, max_new_tokens=100)
    ```
-   On can use "<!!-> Rewrite in French: <-!!>" and "<!!!-> Rewrite in French: <-!!!>" to further increase the level of emphasis.
+   On can use `<!!-> Rewrite in French: <-!!>` and `<!!!-> Rewrite in French: <-!!!>` to further increase the level of emphasis.
    
    
 4. **Customize Delta Values** (Optional):

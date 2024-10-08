@@ -5,7 +5,7 @@ setup(
     version="0.1.0",
     author="Pedro Silva",
     author_email="pedrolmssilva@gmail.com",
-    description="A Python package that uses PyTorch, Transformers, and NumPy",
+    description="A Python package that uses PyTorch, Transformers, and NumPy. Test",
     long_description=open('README.md').read(),
     long_description_content_type="text/markdown",
     url="https://github.com/netop-team/pay_attention_pipeline",  # Replace with your GitHub repo or project URL

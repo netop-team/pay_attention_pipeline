@@ -2,7 +2,7 @@
 
 This repository offers a pipeline to compute **Influence** and utilize **GUIDE** (**G**uided **U**nderstanding with **I**nstruction-**D**riven **E**nhancements) for improving transformer model explainability and performance. The pipeline adjusts attention mechanisms to prioritize specific instructions, offering a cost-effective alternative to traditional fine-tuning methods.
 
-For more details, you can read our  [paper](https://arxiv.org/abs/2409.19001), or test on [colab](https://colab.research.google.com/drive/13JlFYEJe4oMaV-Swnq0H8e4hrAcRGqFG).
+For more details, you can read our  [paper](https://arxiv.org/abs/2409.19001), or test on [colab](https://colab.research.google.com/drive/1jXVOOgXDQZiQ5kXyyVtHHSAr3hHB1pw0).
 
 ## Features
 

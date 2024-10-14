@@ -84,6 +84,8 @@ Use this to fine-tune the attention adjustments. An example of visualization is 
 
 ![Influence Plot](img/example_influence.png)
 
+**Remark:** The current implementation of *Influence* does not support the Phi models (it supports the Llama, Mistral, and Gemini families of models). *GUIDE*, however, also works for Phi models.
+
 ## Citation
 
 If you use this work in research, please cite:
